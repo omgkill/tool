@@ -4,6 +4,7 @@ import Hello from './Hello/index.vue'
 import Read from './Read/index.vue'
 import Write from './Write/index.vue'
 import Mdict from './Mdict/index.vue'
+import DictManage from './DictManage/index.vue'
 
 const route = ref('')
 const enterAction = ref({})
@@ -22,6 +23,9 @@ onMounted(() => {
 <template>
   <template v-if="route === 'mdict'">
     <Mdict :enterAction="enterAction" />
+  </template>
+  <template v-else-if="route === 'mdict-manage'">
+    <DictManage />
   </template>
   <template v-else-if="route === 'hello'">
     <Hello :enterAction="enterAction" />

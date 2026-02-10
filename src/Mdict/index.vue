@@ -6,62 +6,69 @@ const props = defineProps<{ enterAction: any }>()
 const word = ref('')
 const loading = ref(false)
 
-// 假数据结果列表
+// 当前配置的词典列表（顺序即查询顺序）
+const dicts = ref<Array<{ path: string; name: string }>>([])
+
+// 查询结果：按词典返回
 const results = ref<
   Array<{
-    id: number
+    dictPath: string
     dictName: string
-    content: string
+    ok: boolean
+    content?: string
+    error?: string
   }>
 >([])
 
-// 控制每个词典结果是否展开
-const expanded = ref<Record<number, boolean>>({})
+// 控制每个词典结果是否展开，key 用 dictPath
+const expanded = ref<Record<string, boolean>>({})
 
-function mockQuery(wordValue: string) {
-  const w = wordValue || 'example'
-  // 模拟从多个词典查出的不同结果
-  return [
-    {
-      id: 1,
-      dictName: '英汉词典 A',
-      content: `${w} (A): 这里是来自英汉词典 A 的解释，支持多行，\n可以展示较长的释义内容。`
-    },
-    {
-      id: 2,
-      dictName: '英英词典 B',
-      content: `${w} (B): This is a mock definition from English-English dictionary B.\nYou can put more detailed examples here.`
-    },
-    {
-      id: 3,
-      dictName: '专业术语词典 C',
-      content: `${w} (C): 专业领域术语解释，示例句子等。`
-    }
-  ]
+function loadDicts() {
+  try {
+    dicts.value = (window as any).services.getDictList() || []
+  } catch (e) {
+    console.error('getDictList error', e)
+  }
 }
 
-function handleSearch() {
+async function handleSearch() {
   const w = word.value.trim()
   if (!w) return
   loading.value = true
-  // 模拟异步查询
-  setTimeout(() => {
-    const res = mockQuery(w)
-    results.value = res
-    const exp: Record<number, boolean> = {}
-    res.forEach(r => {
-      exp[r.id] = true // 默认全部展开
-    })
+  try {
+    const res = await (window as any).services.queryWord(w)
+    results.value = res || []
+    const exp: Record<string, boolean> = {}
+    for (const r of results.value) {
+      if (r.ok && r.content) {
+        exp[r.dictPath] = true // 默认展开有内容的词典
+      }
+    }
     expanded.value = exp
+  } catch (e) {
+    console.error('queryWord error', e)
+  } finally {
     loading.value = false
-  }, 300)
+  }
 }
 
-function toggleExpand(id: number) {
-  expanded.value[id] = !expanded.value[id]
+function toggleExpand(dictPath: string) {
+  expanded.value[dictPath] = !expanded.value[dictPath]
+}
+
+function openManage() {
+  // 通过重新进入插件并传 code 的方式跳转到管理功能
+  try {
+    // 如果 utools 提供 runCommand / redirect 能力，可以在这里调用
+    // 这里简单提示用户使用“管理词典”指令打开管理页
+    window.utools.showNotification('请在 uTools 中输入 “管理词典” 打开词典管理页面')
+  } catch (e) {
+    console.error('openManage error', e)
+  }
 }
 
 onMounted(() => {
+  loadDicts()
   // 如果 enterAction 里带了选中文本，可以自动填入
   if (props.enterAction && props.enterAction.payload) {
     try {
@@ -75,7 +82,15 @@ onMounted(() => {
 
 <template>
   <div class="mdict-page">
-    <h1>MDict 多词典查词（假数据演示版）</h1>
+    <h1>MDict 多词典查词</h1>
+
+    <div class="dict-info">
+      <span v-if="dicts.length" class="dict-summary">
+        当前词典顺序：{{ dicts.map(d => d.name).join(' / ') }}
+      </span>
+      <span v-else class="dict-empty">尚未添加任何词典</span>
+      <button class="manage-btn" @click="openManage">管理词典</button>
+    </div>
 
     <div class="search-bar">
       <input
@@ -91,12 +106,18 @@ onMounted(() => {
     </div>
 
     <div v-if="results.length" class="result-list">
-      <div v-for="item in results" :key="item.id" class="result-item">
-        <div class="result-header" @click="toggleExpand(item.id)">
-          <span class="collapse-icon">{{ expanded[item.id] ? '▼' : '▶' }}</span>
+      <div v-for="item in results" :key="item.dictPath" class="result-item">
+        <div class="result-header" @click="toggleExpand(item.dictPath)">
+          <span class="collapse-icon">{{ expanded[item.dictPath] ? '▼' : '▶' }}</span>
           <span class="dict-name">{{ item.dictName }}</span>
+          <span v-if="!item.ok" class="status-badge error">错误</span>
+          <span v-else-if="!item.content" class="status-badge empty">无结果</span>
         </div>
-        <pre v-if="expanded[item.id]" class="result-content">{{ item.content }}</pre>
+        <div v-if="expanded[item.dictPath]" class="result-body">
+          <div v-if="item.ok && item.content" class="result-content" v-html="item.content" />
+          <div v-else-if="item.error" class="error-text">查询失败：{{ item.error }}</div>
+          <div v-else class="empty-text">未查到结果</div>
+        </div>
       </div>
     </div>
 
@@ -144,7 +165,7 @@ onMounted(() => {
   border-radius: 6px;
   padding: 6px 8px;
   margin-bottom: 8px;
-  background: rgba(0, 0, 0, 0.03);
+  background: rgb(230, 230, 230);
 }
 
 .result-header {
@@ -170,11 +191,64 @@ onMounted(() => {
 
 .result-content {
   margin-top: 4px;
-  padding: 6px;
-  background: #fff;
+  padding: 12px;
+  background: rgb(204, 204, 204);
   border-radius: 4px;
-  font-size: 13px;
-  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.8;
+  word-wrap: break-word;
+  color: #212121;
+}
+
+/* 美化词典返回的 HTML 内容 */
+.result-content :deep(a) {
+  color: #0d47a1;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.result-content :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.result-content :deep(b),
+.result-content :deep(strong) {
+  font-weight: 700;
+  color: #01579b;
+}
+
+.result-content :deep(i),
+.result-content :deep(em) {
+  font-style: italic;
+  color: #424242;
+}
+
+.result-content :deep(ul),
+.result-content :deep(ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.result-content :deep(li) {
+  margin: 4px 0;
+}
+
+.result-content :deep(p) {
+  margin: 8px 0;
+}
+
+.result-content :deep(hr) {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid #e0e0e0;
+}
+
+.result-content :deep(font) {
+  /* 覆盖旧式 font 标签的样式 */
+}
+
+.result-content :deep(span) {
+  /* 保持原有样式，但确保可读 */
 }
 
 .no-result {
@@ -189,8 +263,26 @@ onMounted(() => {
   }
 
   .result-content {
-    background: #424242;
-    color: #f5f5f5;
+    background: #2e2e2e;
+    color: #e0e0e0;
+  }
+
+  .result-content :deep(b),
+  .result-content :deep(strong) {
+    color: #fff;
+  }
+
+  .result-content :deep(i),
+  .result-content :deep(em) {
+    color: #b0b0b0;
+  }
+
+  .result-content :deep(a) {
+    color: #64b5f6;
+  }
+
+  .result-content :deep(hr) {
+    border-top-color: #555;
   }
 }
 </style>

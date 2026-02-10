@@ -49,6 +49,15 @@
         "查词",
         "mdict"
       ]
+    },
+    {
+      "code": "mdict-manage",
+      "explain": "管理 MDX 词典列表",
+      "cmds": [
+        "管理词典",
+        "添加词典",
+        "mdict-manage"
+      ]
     }
   ]
 }
