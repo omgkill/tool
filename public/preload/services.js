@@ -1,30 +1,14 @@
 const fs = require('node:fs')
 const path = require('node:path')
-
-// 建议在项目根目录安装 npm 包 "mdict" 作为 MDX 解析库：
-//   npm install mdict
-let MdictClass = null
-try {
-  const mdictLib = require('mdict')
-  // 兼容几种可能的导出形式
-  if (typeof mdictLib === 'function') {
-    MdictClass = mdictLib
-  } else if (typeof mdictLib.dictionary === 'function') {
-    MdictClass = mdictLib.dictionary
-  } else if (typeof mdictLib.Mdict === 'function') {
-    MdictClass = mdictLib.Mdict
-  } else if (typeof mdictLib.default === 'function') {
-    MdictClass = mdictLib.default
-  }
-} catch (e) {
-  MdictClass = null
-}
+// 直接引用 mdict 内部解析器，绕过 index.js 的封装以支持 MDD 和更灵活的加载
+// 注意：mdict 库本身对 .mdd 的支持需要传入具有 name 属性的文件对象，这里通过 Buffer hack 实现
+const mdictParser = require('mdict/mdict-parser.js')
 
 // 词典配置在 utools.db 中的 key
 const DICT_CONFIG_KEY = 'mdict-config'
 
-// 内存中缓存已加载的词典实例，避免重复读取大文件
-// key: filePath, value: { mdict, name }
+// 内存中缓存已加载的词典实例
+// key: filePath, value: { mdxLookup, mddLookup, name, filePath }
 const dictInstances = new Map()
 
 function loadConfig() {
@@ -41,79 +25,166 @@ async function loadMdictInstance(filePath) {
   if (dictInstances.has(filePath)) {
     return dictInstances.get(filePath)
   }
-  if (!MdictClass) {
-    throw new Error('MDX 解析库未安装或加载失败，请先在项目根目录执行：npm install mdict')
-  }
-  
-  // 检查是否有对应的 MDD 文件
+
+  // 准备文件对象列表
+  // mdict-parser 依赖 file.name 来判断扩展名，而 fs.open 支持 Buffer 作为路径
+  // 所以我们创建一个 Buffer 并附加 name 属性，以此欺骗 parser 正确识别文件类型
+  const files = []
+
+  // MDX 文件
+  const mdxBuf = Buffer.from(filePath)
+  mdxBuf.name = filePath
+  files.push(mdxBuf)
+
+  // 检查 MDD 文件
   const mddPath = filePath.replace(/\.mdx$/i, '.mdd')
   const hasMdd = fs.existsSync(mddPath)
-  
-  // 初始化 MDX
-  const mdictPromise = new MdictClass(filePath)
-  const mdict = (mdictPromise && typeof mdictPromise.then === 'function') ? await mdictPromise : mdictPromise
-  
-  // 如果有 MDD，也加载它
-  let mdd = null
   if (hasMdd) {
-    try {
-      const mddPromise = new MdictClass(mddPath)
-      mdd = (mddPromise && typeof mddPromise.then === 'function') ? await mddPromise : mddPromise
-    } catch (e) {
-      // MDD 加载失败不影响 MDX 使用
+    const mddBuf = Buffer.from(mddPath)
+    mddBuf.name = mddPath
+    files.push(mddBuf)
+  }
+
+  try {
+    // 调用 mdict-parser 加载
+    // load 返回一个 Promise，解析为 resources 数组
+    // resources 数组上挂载了 mdx 和 mdd 的 Promise 属性
+    const resources = await mdictParser.load(files)
+
+    // 获取查询函数
+    const mdxLookup = await resources.mdx
+    let mddLookup = null
+    
+    // 注意：mdict parser 内部是通过文件扩展名来决定 key 的
+    // 由于我们传入的 Buffer 有 name 属性，它会解析出 'mdd' 属性
+    // 但在某些实现中可能是 resources['mdd']
+    if (resources.mdd) {
+      try {
+        mddLookup = await resources.mdd
+      } catch (e) {
+        console.error('MDD load failed', e)
+      }
+    } else if (resources['.mdd']) { // 有可能是带点的
+       try {
+        mddLookup = await resources['.mdd']
+      } catch (e) {
+        console.error('MDD load failed', e)
+      }
     }
+
+    const name = path.basename(filePath)
+    const inst = { mdxLookup, mddLookup, name, filePath }
+    dictInstances.set(filePath, inst)
+    return inst
+
+  } catch (e) {
+    console.error('Load mdict failed', e)
+    throw new Error(`词典加载失败: ${e.message}`)
+  }
+}
+
+function getMimeType(filename) {
+  const ext = path.extname(filename).toLowerCase()
+  switch (ext) {
+    case '.jpg': case '.jpeg': return 'image/jpeg'
+    case '.png': return 'image/png'
+    case '.gif': return 'image/gif'
+    case '.bmp': return 'image/bmp'
+    case '.svg': return 'image/svg+xml'
+    case '.mp3': return 'audio/mpeg'
+    case '.wav': return 'audio/wav'
+    case '.ogg': return 'audio/ogg'
+    case '.css': return 'text/css'
+    case '.js': return 'text/javascript'
+    default: return 'application/octet-stream'
+  }
+}
+
+async function replaceResources(html, mddLookup) {
+  if (!html || !mddLookup) return html
+  
+  const regex = /(src|href)=["']([^"']+)["']/g
+  const matches = []
+  let match
+  
+  // 收集所有资源引用
+  while ((match = regex.exec(html)) !== null) {
+    matches.push({ full: match[0], attr: match[1], val: match[2] })
   }
   
-  const name = path.basename(filePath)
-  const inst = { mdict, mdd, name, filePath }
-  dictInstances.set(filePath, inst)
-  return inst
+  if (matches.length === 0) return html
+  
+  const replacements = new Map()
+  const uniqueVals = [...new Set(matches.map(m => m.val))]
+  
+  // 并行加载资源
+  await Promise.all(uniqueVals.map(async (val) => {
+    // 跳过非本地资源
+    if (val.startsWith('entry://') || val.startsWith('http') || val.startsWith('https') || val.startsWith('data:')) {
+      return
+    }
+    
+    try {
+      // mdict 的 mdd lookup 会自动处理路径分隔符和反斜杠前缀
+      // 直接传入原始路径即可
+      const buffer = await mddLookup(val)
+      console.log(`[MDD Resource] Loaded: ${val}`, {
+        type: typeof buffer,
+        isBuffer: Buffer.isBuffer(buffer),
+        length: buffer ? buffer.length : 'N/A',
+        preview: buffer ? buffer.slice(0, 20).toString('hex') : 'null'
+      })
+      
+      if (buffer) {
+        const base64 = Buffer.from(buffer).toString('base64')
+        const mime = getMimeType(val)
+        replacements.set(val, `data:${mime};base64,${base64}`)
+      }
+    } catch (e) {
+      console.warn(`[MDD Resource] Failed to load: ${val}`, e.message || e)
+      // 资源未找到是正常的，忽略错误
+    }
+  }))
+  
+  // 替换 HTML
+  return html.replace(regex, (match, attr, val) => {
+    if (replacements.has(val)) {
+      return `${attr}="${replacements.get(val)}"`
+    }
+    return match
+  })
 }
 
 async function queryInDict(filePath, word) {
   try {
-    const { mdict, name } = await loadMdictInstance(filePath)
-    if (!mdict) {
-      throw new Error('词典实例加载失败')
+    const { mdxLookup, mddLookup, name } = await loadMdictInstance(filePath)
+    
+    if (!mdxLookup) {
+      throw new Error('词典查询函数未就绪')
     }
     
     let result = ''
-    
-    // 尝试多种常见的查询方法名
-    const lookupMethods = ['lookup', 'search', 'query', 'find', 'definition']
-    let method = null
-    
-    for (const methodName of lookupMethods) {
-      if (typeof mdict[methodName] === 'function') {
-        method = methodName
-        break
+    try {
+      // mdict 的 lookup 返回数组（多条释义）
+      const definitions = await mdxLookup(word)
+      if (Array.isArray(definitions) && definitions.length > 0) {
+        result = definitions.join('\n<hr>\n')
+      }
+    } catch (e) {
+      // NOT FOUND 也是通过 throw 抛出的
+      if (typeof e === 'string' && e.includes('NOT FOUND')) {
+        result = ''
+      } else {
+        throw e
       }
     }
     
-    if (method) {
-      const r = await mdict[method](word)
-      
-      // 处理各种可能的返回格式
-      if (!r) {
-        result = ''
-      } else if (typeof r === 'string') {
-        result = r
-      } else if (Array.isArray(r)) {
-        if (r.length > 0) {
-          // 如果数组元素是对象，尝试提取 definition/content/html 等字段
-          if (typeof r[0] === 'object' && r[0] !== null) {
-            result = r.map(item => 
-              item.definition || item.content || item.html || item.text || JSON.stringify(item)
-            ).join('\n\n')
-          } else {
-            result = r.join('\n\n')
-          }
-        }
-      } else if (typeof r === 'object') {
-        // 如果返回对象，尝试提取常见字段
-        result = r.definition || r.content || r.html || r.text || JSON.stringify(r)
-      } else {
-        result = String(r)
+    // 如果有结果且有 MDD，替换资源
+    if (result && mddLookup) {
+      try {
+        result = await replaceResources(result, mddLookup)
+      } catch (e) {
+        console.error('Resource replacement failed', e)
       }
     }
 
@@ -125,17 +196,6 @@ async function queryInDict(filePath, word) {
     }
   } catch (e) {
     const errMsg = e && e.message ? e.message : String(e)
-    
-    // "** NOT FOUND **" 是正常的"未查到"，不算错误
-    if (errMsg.includes('NOT FOUND')) {
-      return {
-        dictPath: filePath,
-        dictName: path.basename(filePath),
-        ok: true,
-        content: ''
-      }
-    }
-    
     return {
       dictPath: filePath,
       dictName: path.basename(filePath),
@@ -145,9 +205,8 @@ async function queryInDict(filePath, word) {
   }
 }
 
-// 通过 window 对象向渲染进程注入 nodejs 能力
+// 注入到 window
 window.services = {
-  // 选择 MDX 词典文件（多选），并保存到配置中
   selectDictFiles() {
     const files = window.utools.showOpenDialog({
       title: '选择 MDX 词典文件',
@@ -170,7 +229,6 @@ window.services = {
     return config.dicts
   },
 
-  // 获取当前配置的词典列表（过滤掉已删除的文件）
   getDictList() {
     const config = loadConfig()
     const alive = config.dicts.filter(d => fs.existsSync(d.path))
@@ -181,7 +239,6 @@ window.services = {
     return alive
   },
 
-  // 更新词典顺序（前端把新的数组整体传回来）
   updateDictOrder(dicts) {
     const config = loadConfig()
     config.dicts = dicts || []
@@ -189,7 +246,6 @@ window.services = {
     return config.dicts
   },
 
-  // 删除某个词典
   removeDict(filePath) {
     const config = loadConfig()
     config.dicts = config.dicts.filter(d => d.path !== filePath)
@@ -198,18 +254,18 @@ window.services = {
     return config.dicts
   },
 
-  // 查词：按当前顺序，依次在每个词典中查
   async queryWord(word) {
     const w = (word || '').trim()
     if (!w) return []
     const config = loadConfig()
     const dicts = config.dicts || []
-    const results = []
-    for (const d of dicts) {
-      if (!fs.existsSync(d.path)) continue
-      const r = await queryInDict(d.path, w)
-      results.push(r)
-    }
-    return results
+    
+    // 串行查询以保证顺序，或者并行查询后排序？
+    // 并行查询通常更快
+    const promises = dicts
+      .filter(d => fs.existsSync(d.path))
+      .map(d => queryInDict(d.path, w))
+      
+    return await Promise.all(promises)
   }
 }

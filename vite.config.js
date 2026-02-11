@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { copyFileSync, mkdirSync, existsSync } from 'fs'
+import { copyFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
 // https://vitejs.dev/config/
@@ -23,5 +23,15 @@ export default defineConfig({
       }
     }
   ],
-  base: './'
+  base: './',
+  build: {
+    sourcemap: false, // 禁用 source map，避免生成 .map 文件
+    minify: 'esbuild', // 默认就是 esbuild，也可以用 'terser'
+    reportCompressedSize: false, // 禁用 gzip 压缩大小报告（不会禁用压缩，但能稍微加快构建）
+    rollupOptions: {
+      output: {
+        // 确保没有 .gz 等压缩文件生成（Vite 默认不会生成 .gz，除非用了 compression 插件）
+      }
+    }
+  }
 })

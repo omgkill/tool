@@ -176,7 +176,7 @@ onMounted(() => {
 
 .result-content {
   padding: 12px;
-  background: #f5f5f7;
+  background: transparent;
   border-radius: 8px;
   font-size: 15px;
   line-height: 1.7;
@@ -255,11 +255,11 @@ onMounted(() => {
 
 @media (prefers-color-scheme: dark) {
   .mdict-page {
-    background: #000;
+    background: #333333;
   }
 
   .mdict-page h1 {
-    color: #f5f5f7;
+    color: #e0e0e0;
   }
 
   .dict-info {
@@ -299,12 +299,14 @@ onMounted(() => {
   }
 
   .result-item {
-    background: #1c1c1e;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    background: transparent;
+    box-shadow: none;
+    border: none;
   }
 
   .result-item:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    box-shadow: none;
+    background: transparent;
   }
 
   .result-header:hover {
@@ -320,8 +322,43 @@ onMounted(() => {
   }
 
   .result-content {
-    background: #2c2c2e;
-    color: #f5f5f7;
+    background: transparent;
+    color: #e0e0e0;
+  }
+
+  .result-content :deep(a) {
+    color: #58a6ff;
+  }
+
+  /* 针对词典内容中可能的黑色文字强制反色 */
+  .result-content :deep(*) {
+    color: inherit;
+    background-color: transparent !important;
+  }
+
+  /* 特殊处理一些常见的词典标签样式 */
+  .result-content :deep(b), 
+  .result-content :deep(strong) {
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .result-content :deep(i), 
+  .result-content :deep(em) {
+    color: #a5d6ff;
+  }
+
+  /* 处理高亮或强调色，避免深蓝在黑底看不清 */
+  .result-content :deep(font[color="blue"]),
+  .result-content :deep(span[style*="color: blue"]),
+  .result-content :deep(span[style*="color:#0000FF"]) {
+    color: #58a6ff !important;
+  }
+
+  .result-content :deep(font[color="red"]),
+  .result-content :deep(span[style*="color: red"]),
+  .result-content :deep(span[style*="color:#FF0000"]) {
+    color: #ff7b72 !important;
   }
 
   .result-content :deep(a) {
