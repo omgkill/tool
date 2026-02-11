@@ -13,7 +13,7 @@
         {
           "type": "over",
           "label": "查词",
-          "exclude": "/^[\\u4e00-\\u9fa5]+$/",
+          "exclude": "/[\\u4e00-\\u9fa5]/",
           "minLength": 1,
           "maxLength": 20
         }
