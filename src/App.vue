@@ -1,8 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, ref } from 'vue';
-import Hello from './Hello/index.vue'
-import Read from './Read/index.vue'
-import Write from './Write/index.vue'
+import { onMounted, ref } from 'vue'
 import Mdict from './Mdict/index.vue'
 import DictManage from './DictManage/index.vue'
 
@@ -27,18 +24,9 @@ onMounted(() => {
   <template v-else-if="route === 'mdict-manage'">
     <DictManage />
   </template>
-  <template v-else-if="route === 'hello'">
-    <Hello :enterAction="enterAction" />
-  </template>
-  <template v-else-if="route === 'read'">
-    <Read :enterAction="enterAction" />
-  </template>
-  <template v-else-if="route === 'write'">
-    <Write :enterAction="enterAction" />
-  </template>
   <template v-else>
     <div style="padding: 16px; font-size: 14px;">
-      未识别的功能 code：{{ route || '（空）' }}
+      未识别的功能
     </div>
   </template>
 </template>

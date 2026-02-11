@@ -3,19 +3,9 @@ const path = require('node:path')
 
 // 建议在项目根目录安装 npm 包 "mdict" 作为 MDX 解析库：
 //   npm install mdict
-// 这里假定该库导出 Mdict 类，构造函数接受 mdx 文件路径，实例有 lookup(word) / lookupSync(word) 方法
 let MdictClass = null
-let mdictLoadError = null
 try {
-  console.log('[preload] 尝试 require("mdict")...')
   const mdictLib = require('mdict')
-  console.log('[preload] require("mdict") 成功，返回类型:', typeof mdictLib)
-  const keys = Object.keys(mdictLib)
-  console.log('[preload] mdictLib keys:', keys)
-  console.log('[preload] mdictLib keys 具体内容:', JSON.stringify(keys))
-  if (keys.length > 0) {
-    console.log('[preload] 第一个 key 是:', keys[0], ', 对应的值类型:', typeof mdictLib[keys[0]])
-  }
   // 兼容几种可能的导出形式
   if (typeof mdictLib === 'function') {
     MdictClass = mdictLib
@@ -26,14 +16,7 @@ try {
   } else if (typeof mdictLib.default === 'function') {
     MdictClass = mdictLib.default
   }
-  if (MdictClass) {
-    console.log('[preload] MdictClass 已成功设置')
-  } else {
-    console.warn('[preload] require("mdict") 成功但未找到有效的构造函数')
-  }
 } catch (e) {
-  mdictLoadError = e
-  console.error('[preload] require("mdict") 失败:', e)
   MdictClass = null
 }
 
@@ -61,14 +44,10 @@ async function loadMdictInstance(filePath) {
   if (!MdictClass) {
     throw new Error('MDX 解析库未安装或加载失败，请先在项目根目录执行：npm install mdict')
   }
-  console.log('[loadMdictInstance] 创建词典实例:', filePath)
-  const mdictPromise = new MdictClass(filePath)
-  console.log('[loadMdictInstance] 构造函数返回类型:', typeof mdictPromise)
-  console.log('[loadMdictInstance] 是否有 then 方法:', typeof mdictPromise.then === 'function')
   
+  const mdictPromise = new MdictClass(filePath)
   // 如果返回的是 Promise-like 对象（有 then 方法），需要 await
   const mdict = (mdictPromise && typeof mdictPromise.then === 'function') ? await mdictPromise : mdictPromise
-  console.log('[loadMdictInstance] 实例化完成，可用方法:', mdict ? Object.keys(mdict) : 'null')
   
   const name = path.basename(filePath)
   const inst = { mdict, name }
@@ -82,7 +61,6 @@ async function queryInDict(filePath, word) {
     if (!mdict) {
       throw new Error('词典实例加载失败')
     }
-    console.log('[queryInDict] 词典实例:', name, ', 可用方法:', Object.keys(mdict))
     
     let result = ''
     
@@ -98,12 +76,7 @@ async function queryInDict(filePath, word) {
     }
     
     if (method) {
-      console.log('[queryInDict] 使用方法:', method, '查询:', word)
       const r = await mdict[method](word)
-      console.log('[queryInDict] 返回值类型:', typeof r, ', 是数组:', Array.isArray(r))
-      console.log('[queryInDict] 返回值前 500 字符:', typeof r === 'string' ? r.substring(0, 500) : r)
-      console.log('[queryInDict] 是否包含 HTML 标签:', typeof r === 'string' && /<[^>]+>/.test(r))
-      console.log('[queryInDict] 内容长度:', typeof r === 'string' ? r.length : JSON.stringify(r).length)
       
       // 处理各种可能的返回格式
       if (!r) {
@@ -127,11 +100,8 @@ async function queryInDict(filePath, word) {
       } else {
         result = String(r)
       }
-    } else {
-      console.warn('[queryInDict] 未找到查询方法，可用方法:', Object.keys(mdict))
     }
 
-    console.log('[queryInDict] 最终 result 长度:', result.length)
     return {
       dictPath: filePath,
       dictName: name,
@@ -140,7 +110,6 @@ async function queryInDict(filePath, word) {
     }
   } catch (e) {
     const errMsg = e && e.message ? e.message : String(e)
-    console.log('[queryInDict] 捕获异常:', errMsg)
     
     // "** NOT FOUND **" 是正常的"未查到"，不算错误
     if (errMsg.includes('NOT FOUND')) {
@@ -152,7 +121,6 @@ async function queryInDict(filePath, word) {
       }
     }
     
-    console.error('[queryInDict] 查询出错:', e)
     return {
       dictPath: filePath,
       dictName: path.basename(filePath),
@@ -164,27 +132,6 @@ async function queryInDict(filePath, word) {
 
 // 通过 window 对象向渲染进程注入 nodejs 能力
 window.services = {
-  // 读文件
-  readFile(file) {
-    return fs.readFileSync(file, { encoding: 'utf-8' })
-  },
-
-  // 文本写入到下载目录
-  writeTextFile(text) {
-    const filePath = path.join(window.utools.getPath('downloads'), Date.now().toString() + '.txt')
-    fs.writeFileSync(filePath, text, { encoding: 'utf-8' })
-    return filePath
-  },
-
-  // 图片写入到下载目录
-  writeImageFile(base64Url) {
-    const matchs = /^data:image\/([a-z]{1,20});base64,/i.exec(base64Url)
-    if (!matchs) return
-    const filePath = path.join(window.utools.getPath('downloads'), Date.now().toString() + '.' + matchs[1])
-    fs.writeFileSync(filePath, base64Url.substring(matchs[0].length), { encoding: 'base64' })
-    return filePath
-  },
-
   // 选择 MDX 词典文件（多选），并保存到配置中
   selectDictFiles() {
     const files = window.utools.showOpenDialog({
