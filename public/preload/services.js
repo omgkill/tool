@@ -45,12 +45,27 @@ async function loadMdictInstance(filePath) {
     throw new Error('MDX 解析库未安装或加载失败，请先在项目根目录执行：npm install mdict')
   }
   
+  // 检查是否有对应的 MDD 文件
+  const mddPath = filePath.replace(/\.mdx$/i, '.mdd')
+  const hasMdd = fs.existsSync(mddPath)
+  
+  // 初始化 MDX
   const mdictPromise = new MdictClass(filePath)
-  // 如果返回的是 Promise-like 对象（有 then 方法），需要 await
   const mdict = (mdictPromise && typeof mdictPromise.then === 'function') ? await mdictPromise : mdictPromise
   
+  // 如果有 MDD，也加载它
+  let mdd = null
+  if (hasMdd) {
+    try {
+      const mddPromise = new MdictClass(mddPath)
+      mdd = (mddPromise && typeof mddPromise.then === 'function') ? await mddPromise : mddPromise
+    } catch (e) {
+      // MDD 加载失败不影响 MDX 使用
+    }
+  }
+  
   const name = path.basename(filePath)
-  const inst = { mdict, name }
+  const inst = { mdict, mdd, name, filePath }
   dictInstances.set(filePath, inst)
   return inst
 }
