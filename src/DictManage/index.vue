@@ -28,8 +28,10 @@ function handleAddDict() {
 }
 
 function saveOrder() {
+  // 因为 Vue 的响应式是代理对象，传给 preload 需要转为纯数组
+  const plainDicts = JSON.parse(JSON.stringify(dicts.value))
   try {
-    const res = (window as any).services.updateDictOrder(dicts.value)
+    const res = (window as any).services.updateDictOrder(plainDicts)
     if (res) dicts.value = res
   } catch (e) {
     console.error('updateDictOrder error', e)
@@ -93,42 +95,44 @@ onMounted(() => {
     </div>
 
     <div v-if="dicts.length" class="dict-list">
-      <div
-        v-for="(item, index) in dicts"
-        :key="item.path"
-        class="dict-item"
-      >
-        <div class="dict-number">{{ index + 1 }}</div>
-        <div class="dict-main">
-          <div class="dict-name">{{ item.name }}</div>
-          <div class="dict-path">{{ item.path }}</div>
+      <transition-group name="list">
+        <div
+          v-for="(item, index) in dicts"
+          :key="item.path"
+          class="dict-item"
+        >
+          <div class="dict-number">{{ index + 1 }}</div>
+          <div class="dict-main">
+            <div class="dict-name">{{ item.name }}</div>
+            <div class="dict-path">{{ item.path }}</div>
+          </div>
+          <div class="dict-actions">
+            <button 
+              class="action-btn" 
+              :disabled="index === 0" 
+              @click="moveUp(index)"
+              title="上移"
+            >
+              ↑
+            </button>
+            <button 
+              class="action-btn" 
+              :disabled="index === dicts.length - 1" 
+              @click="moveDown(index)"
+              title="下移"
+            >
+              ↓
+            </button>
+            <button 
+              class="action-btn danger" 
+              @click="handleRemove(item.path)"
+              title="删除"
+            >
+              ×
+            </button>
+          </div>
         </div>
-        <div class="dict-actions">
-          <button 
-            class="action-btn" 
-            :disabled="index === 0" 
-            @click="moveUp(index)"
-            title="上移"
-          >
-            ↑
-          </button>
-          <button 
-            class="action-btn" 
-            :disabled="index === dicts.length - 1" 
-            @click="moveDown(index)"
-            title="下移"
-          >
-            ↓
-          </button>
-          <button 
-            class="action-btn danger" 
-            @click="handleRemove(item.path)"
-            title="删除"
-          >
-            ×
-          </button>
-        </div>
-      </div>
+      </transition-group>
     </div>
 
     <div v-else class="empty">
@@ -240,16 +244,35 @@ onMounted(() => {
 }
 
 .dict-item {
-  padding: 16px;
-  margin-bottom: 12px;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  transition: all 0.2s ease;
-}
+    padding: 16px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.3s ease; /* 增加过渡时间让动画更明显 */
+  }
+
+  /* 列表动画 */
+  .list-move,
+  .list-enter-active,
+  .list-leave-active {
+    transition: all 0.3s ease;
+  }
+
+  .list-enter-from,
+  .list-leave-to {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+
+  /* 确保移动时的元素不被遮挡 */
+  .list-leave-active {
+    position: absolute;
+    width: 100%;
+  }
 
 .dict-item:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);

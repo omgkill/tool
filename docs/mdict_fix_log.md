@@ -1,4 +1,4 @@
-# mdict 库 MDD 文件支持修复文档
+# mdict 库 MDD 文件支持修复与工程化持久化文档
 
 ## 问题背景
 
@@ -24,7 +24,7 @@
 
 ## 解决方案
 
-我们采用了**“最小侵入式修改”**的策略，在保留 `mdict` 高性能查词优势的前提下，通过以下步骤完美修复了 `.mdd` 支持：
+我们采用了**“最小侵入式修改”**的策略，在保留 `mdict` 高性能查词优势的前提下，通过以下步骤完美修复了 `.mdd` 支持。
 
 ### 1. 加载层 Hack (在 `services.js` 中)
 
@@ -37,9 +37,9 @@ mddBuf.name = mddPath; // 关键：让 parser 识别出 .mdd 后缀
 files.push(mddBuf);
 ```
 
-### 2. 源码层修正 (在 `node_modules/mdict/mdict-parser.js` 中)
+### 2. 源码层修正 (Monkey Patch)
 
-我们对库的源码进行了精准的手术式修改：
+我们对 `node_modules/mdict/mdict-parser.js` 进行了精准的手术式修改：
 
 *   **修复 `sliceThen` 函数**：
     显式处理传入的 Buffer 路径，将其转换回字符串，确保 `fs.open` 始终接收标准的文件路径，避免了 "The first argument must be of type string..." 错误。
@@ -71,11 +71,43 @@ files.push(mddBuf);
 *   **资源泄露修复**：
     顺手修复了原库在读取文件后未关闭文件描述符 (`fd`) 的问题，添加了 `fs.close(fd)`。
 
+## 工程化持久化 (patch-package)
+
+由于我们直接修改了 `node_modules` 中的代码，为了防止 `npm install` 后修改丢失，我们引入了 **`patch-package`** 方案。
+
+### 配置步骤
+
+1.  **安装依赖**：
+    在 `public/preload` 目录下安装了 `patch-package` 和 `postinstall-postinstall`。
+
+    ```bash
+    npm install patch-package postinstall-postinstall
+    ```
+
+2.  **生成补丁**：
+    运行命令自动生成差异补丁文件。
+
+    ```bash
+    npx patch-package mdict
+    ```
+    这生成了 `public/preload/patches/mdict+1.0.3.patch` 文件。
+
+3.  **自动化执行**：
+    在 `public/preload/package.json` 中添加了 `postinstall` 脚本。
+
+    ```json
+    "scripts": {
+      "postinstall": "patch-package"
+    }
+    ```
+
+### 效果
+
+每次执行 `npm install` 后，`patch-package` 会自动应用 `patches/` 目录下的补丁文件，将我们对 `mdict` 库的修复逻辑重新打入 `node_modules`，确保团队协作和 CI/CD 构建时代码行为的一致性。
+
 ## 结果验证
 
 经过上述修复：
 1.  **查词速度**：`.mdx` 查询依然保持毫秒级的极速响应。
 2.  **资源加载**：`.mdd` 中的图片（JPG/PNG）、音频（MP3/WAV）等资源现在能被正确读取为 Node.js `Buffer` 对象。
-3.  **前端展示**：配合前端的 `replaceResources` 逻辑（将 Buffer 转为 Base64 Data URI），所有词典资源均能完美显示和播放。
-
-现在，项目拥有了一个既高性能又功能完整的词典解析核心。
+3.  **工程稳定**：通过 patch 机制，确保了第三方库修改的可维护性和持久化。

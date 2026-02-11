@@ -261,7 +261,8 @@ window.services = {
     const dicts = config.dicts || []
     
     // 串行查询以保证顺序，或者并行查询后排序？
-    // 并行查询通常更快
+    // 并行查询通常更快，但 Promise.all 的返回顺序是保证和输入顺序一致的
+    // 所以只要 dicts 数组是有序的，结果就是有序的
     const promises = dicts
       .filter(d => fs.existsSync(d.path))
       .map(d => queryInDict(d.path, w))
