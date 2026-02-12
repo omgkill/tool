@@ -1,0 +1,64 @@
+[
+  {
+    "id": "eval-0",
+    "name": "简单用户服务项目",
+    "prompt": "请分析这个 Go 项目并生成技术文档",
+    "files": ["simple_user_service.zip"],
+    "expectations": [
+      "文档包含项目概览部分，说明技术栈",
+      "识别并记录至少 2 个 API 接口",
+      "提取并记录 users 表结构",
+      "业务逻辑部分包含登录或注册流程说明",
+      "生成的文档是 Markdown 格式"
+    ]
+  },
+  {
+    "id": "eval-1",
+    "name": "包含 gRPC 的游戏服务",
+    "prompt": "帮我整理这个游戏后端的完整文档，重点关注游戏逻辑和 gRPC 接口",
+    "files": ["game_service.zip"],
+    "expectations": [
+      "文档列出 gRPC 服务和方法",
+      "包含 proto 文件的消息定义或从 pb.go 推断的结构",
+      "游戏逻辑部分说明游戏开始、进行、结算等流程",
+      "记录游戏相关的数据表（如 game_records）",
+      "包含 HTTP 和 gRPC 两种协议的接口"
+    ]
+  },
+  {
+    "id": "eval-2",
+    "name": "缺少 proto 文件的项目",
+    "prompt": "这个项目没有 .proto 源文件，只有生成的 pb.go，请尽可能生成文档",
+    "files": ["no_proto_project.zip"],
+    "expectations": [
+      "文档中标注了 gRPC 接口是'根据生成代码推断'",
+      "仍然能够列出 gRPC 方法名称",
+      "推断出请求和响应的主要字段",
+      "不因缺少 proto 文件而拒绝生成文档"
+    ]
+  },
+  {
+    "id": "eval-3",
+    "name": "包含缓存设计的项目",
+    "prompt": "生成项目文档，特别注意 Redis 缓存的使用",
+    "files": ["cache_heavy_project.zip"],
+    "expectations": [
+      "数据存储部分包含缓存设计章节",
+      "列出至少 2 种 Redis key 的设计格式",
+      "说明缓存的过期策略",
+      "区分数据库存储和缓存存储"
+    ]
+  },
+  {
+    "id": "eval-4",
+    "name": "大型项目（选择性分析）",
+    "prompt": "这是一个比较大的项目，请先生成核心模块的文档",
+    "files": ["large_project.zip"],
+    "expectations": [
+      "如果文件数超过 50 个，询问用户关注的模块",
+      "或者智能识别核心模块优先分析",
+      "文档说明项目规模较大，给出模块清单",
+      "提供按需深入的选项"
+    ]
+  }
+]
