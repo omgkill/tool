@@ -1,0 +1,37 @@
+.go-Header,
+header,
+.Header,
+.site-header,
+.navbar,
+.nav-header,
+.top-nav,
+.js-header,
+header nav,
+.Header-nav,
+.go-Breadcrumb,
+.Breadcrumb,
+.breadcrumb,
+.SiteBreadcrumb,
+nav[aria-label="Breadcrumb"],
+.DocBreadcrumb {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
+body {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+}
+
+.SiteContent {
+    padding-top: 0 !important;
+}
+
+article,
+.Article,
+.main-content,
+.SiteContent {
+    margin-top: 0 !important;
+}
